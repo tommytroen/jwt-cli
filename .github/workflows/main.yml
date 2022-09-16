@@ -1,4 +1,4 @@
-name: Salsa build & release
+name: jwt-cli build & release
 on:
   push:
     paths-ignore:
@@ -14,7 +14,6 @@ env:
   VERSION: v0.1
   COSIGN_VERSION: v1.10.1
   GO_RELEASER_VERSION: v1.11.2
-  PUSH: false
 jobs:
   set-version:
     runs-on: ubuntu-20.04
