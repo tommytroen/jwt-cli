@@ -24,7 +24,7 @@ func Sign(privateKey *rsa.PrivateKey, claims map[string]interface{}) (string, er
 	}
 
 	now := time.Now()
-	exp := jwt.NewNumericDate(now.Add(time.Second * 120))
+	exp := jwt.NewNumericDate(now.Add(time.Second * 10 * 60))
 
 	stdClaims := jwt.Claims{
 		Expiry:   exp,
