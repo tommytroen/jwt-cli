@@ -1,0 +1,94 @@
+name: Salsa build & release
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - 'CODEOWNERS'
+      - 'LICENSE'
+      - '.gitignore'
+      - 'Makefile'
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+env:
+  VERSION: v0.1
+  COSIGN_VERSION: v1.10.1
+  GO_RELEASER_VERSION: v1.11.2
+  PUSH: false
+jobs:
+  set-version:
+    runs-on: ubuntu-20.04
+    outputs:
+      version: ${{ steps.set-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b # ratchet:actions/checkout@v3
+      - name: set version
+        id: set-version
+        run: |
+          echo Faking a Semantic Version
+          echo ::set-output name=version::${{ env.VERSION }}.$(date "+%Y%m%d%H%M%S")
+  test:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b # ratchet:actions/checkout@v3
+      - name: Extract version of Go to use
+        run: echo "GOVERSION=$(cat go.mod | grep -w "go" | awk ' { print $2 } ' | grep -w "^[^v]")" >> $GITHUB_ENV
+      - uses: actions/setup-go@268d8c0ca0432bb2cf416faae41297df9d262d7f # ratchet:actions/setup-go@v3
+        with:
+          go-version: ${{ env.GOVERSION }}
+      - name: Cache Go modules
+        uses: actions/cache@fd5de65bc895cf536527842281bea11763fefd77 # ratchet:actions/cache@v3
+        id: go-mod-cache
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      - name: Test
+        run: make test
+  build:
+    outputs:
+      cli-tag: ${{ steps.container-tags.outputs.cli-tag }}
+    needs:
+      - set-version
+      - test
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout latest code
+        uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b # ratchet:actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Extract version of Go to use
+        run: echo "GOVERSION=$(cat go.mod | grep -w "go" | awk ' { print $2 } ' | grep -w "^[^v]")" >> $GITHUB_ENV
+      - name: Set up Go
+        uses: actions/setup-go@268d8c0ca0432bb2cf416faae41297df9d262d7f # ratchet:actions/setup-go@v3
+        with:
+          go-version: ${{ env.GOVERSION }}
+      - name: Create tag
+        run: |
+          git tag ${{ needs.set-version.outputs.version }}
+      - name: Install cosign
+        uses: sigstore/cosign-installer@f3c664df7af409cb4873aa5068053ba9d61a57b6 # ratchet:sigstore/cosign-installer@v2.6.0
+        with:
+          cosign-release: ${{ env.COSIGN_VERSION }}
+      - name: Put key on file
+        run: |
+          echo '${{ secrets.COSIGN_PRIVATE_KEY }}' > cosign.key
+      - name: Run GoReleaser
+        if: ${{ github.ref == 'refs/heads/main' }}
+        uses: goreleaser/goreleaser-action@ff11ca24a9b39f2d36796d1fbd7a4e39c182630a # ratchet:goreleaser/goreleaser-action@v3
+        with:
+          distribution: goreleaser
+          version: ${{ env.GO_RELEASER_VERSION }}
+          args: release -f .goreleaser.yml --rm-dist --debug
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+
+      - name: Update major/minor version tag
+        if: ${{ github.ref == 'refs/heads/main' }}
+        run: "git tag -f ${{ env.VERSION }}\ngit push -f origin ${{ env.VERSION }} \n"
+
+      - name: Clean up
+        if: ${{ always() }}
+        run: "rm -f cosign.key \n"
