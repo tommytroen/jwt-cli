@@ -76,8 +76,8 @@ release:
   prerelease: allow
   draft: true
   github:
-    owner: nais
-    name: salsa
+    owner: tommytroen
+    name: jwt-cli
   header: |
     ## {{.ProjectName}} ({{ .Version }})
   footer: |
